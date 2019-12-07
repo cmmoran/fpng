@@ -47,16 +47,15 @@ func main() {
 
 func init() {
 	helpflag = len(os.Args) == 1 || os.Args[1] == "-h"
-	crypt = len(os.Args) == 3 && os.Args[1] == "-k"
-	if !helpflag && crypt {
-		readCrypt()
+	if helpflag {
+		return
 	}
 	if !helpflag && len(os.Args) > 0 {
-		argIndex := 1
-		if crypt {
-			argIndex = 2
-		}
-		infile = os.Args[argIndex]
+		infile = os.Args[1]
+	}
+	match, _ := regexp.MatchString("\\.png$", infile)
+	if !helpflag && !match {
+		readCrypt()
 	}
 }
 
@@ -69,17 +68,17 @@ func readCrypt() {
 	text := string(btext)
 	bcrypt = createHash(text)
 	fmt.Println()
+	crypt = len(text) > 0
 }
 
 func Usage() {
 	fmt.Printf("Hate the message: \033[2m\"At the request of your administrator, only images can be uploaded to this workspace.\"\033[0m?\n" +
 		"fpng is a codec for any arbitrary file to and from png format. Great for sharing arbitrary files where only images are allowed to be shared.\n\n" +
 		"" +
-		"\033[37mfpng\033[0m [\033[36m-k\033[0m] <\033[36minfile\033[0m>\n" +
-		"     [\033[36m-k\033[0m]: prompt for symmetric encryption key (if decoding and infile is encrypted, fpng will prompt for the key with or without this flag)\n" +
+		"\033[37mfpng\033[0m <\033[36minfile\033[0m>\n" +
 		"     <\033[36minfile\033[0m>: png file -> decode to original\n" +
 		"     <\033[36minfile\033[0m>: data file -> encode to <infile>.png\n" +
-		"\033[1mNOTE\033[0m: [] = optional, <> = required\n")
+		"\033[1mNOTE\033[0m: [] = optional, <> = required, empty passphrase disables encrypted encoding.\n")
 
 }
 
