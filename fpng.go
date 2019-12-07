@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/pborman/getopt"
 	"image"
 	"image/png"
 	"io/ioutil"
@@ -13,8 +12,8 @@ import (
 )
 
 var (
-	infile = ""
 	helpflag = false
+	infile   = ""
 )
 
 func main() {
@@ -36,20 +35,23 @@ func main() {
 }
 
 func init() {
-	getopt.BoolVar(&helpflag, 'h', "halp")
-	getopt.StringVar(&infile, 'i', "the file to [en|de]code")
-
-	getopt.Parse()
-	err := getopt.Getopt(nil)
-	if err != nil {
-		// code to handle error
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		return
+	helpflag = len(os.Args) == 1 || os.Args[1] == "-h"
+	if !helpflag && len(os.Args) > 0 {
+		infile = os.Args[1]
 	}
 }
 
 func decode(fName string, oName string) {
 	data, _ := ioutil.ReadFile(fName)
+
+	file, err := os.Stat(fName)
+
+	if err != nil {
+		fmt.Println("y u no file?")
+		return
+	}
+
+	fTime := file.ModTime()
 
 	bufreader := bytes.NewReader(data)
 
@@ -61,18 +63,12 @@ func decode(fName string, oName string) {
 		return
 	}
 
-	_r, _g, _b, _a := imageData.At(0, 0).RGBA()
-	var a = _a & (_a >> 8)
+	nrgba := imageData.(*image.NRGBA)
 
-	var r = ((_r << 8) / (_a & (_a >> 8))) >> 8
-	var g = ((_g << 8) / (_a & (_a >> 8))) >> 8
-	var b = ((_b << 8) / (_a & (_a >> 8))) >> 8
-
-	var filelength = ((r & 0xFF) << 24) | ((g & 0xFF) << 16) | ((b & 0xFF) << 8) | a
+	filelength := (int32(nrgba.Pix[0]) << 24) | (int32(nrgba.Pix[1]) << 16) | (int32(nrgba.Pix[2]) << 8) | int32(nrgba.Pix[3])
 
 	ndata := make([]byte, filelength)
 
-	nrgba := imageData.(*image.NRGBA)
 	ndata = nrgba.Pix[4 : filelength+4]
 
 	outputFile, err := os.Create(oName)
@@ -87,12 +83,19 @@ func decode(fName string, oName string) {
 
 	_ = outputFile.Close()
 	fmt.Printf("Decoded %s -> %s\n", fName, oName)
+
+	err = os.Chtimes(oName, fTime, fTime)
+
+	if err != nil {
+		fmt.Println("y u no modtime?")
+		return
+	}
 }
 
 func Usage() {
-	fmt.Printf("Can only send images through slack huh?\n\033[37mfpng\033[0m -i <\033[36minfile\033[0m>\n" +
-		"\t<infile>: png file -> decode to original\n" +
-		"\t<infile>: data file -> encode to <infile>.png\n")
+	fmt.Printf("Can only send images through slack huh?\n\033[37mfpng\033[0m <\033[36minfile\033[0m>\n" +
+		"     <infile>: png file -> decode to original\n" +
+		"     <infile>: data file -> encode to <infile>.png\n")
 }
 
 func encode(fName string, oName string) {
@@ -120,13 +123,13 @@ func encode(fName string, oName string) {
 
 	for i := 0; i < size; i++ {
 		if i == 0 {
-			myImage.Pix[ii] = uint8(isize >> 24)
+			myImage.Pix[ii] = uint8(isize>>24) & 0xFF
 			ii++
-			myImage.Pix[ii] = uint8(isize >> 16)
+			myImage.Pix[ii] = uint8(isize>>16) & 0xFF
 			ii++
-			myImage.Pix[ii] = uint8(isize >> 8)
+			myImage.Pix[ii] = uint8(isize>>8) & 0xFF
 			ii++
-			myImage.Pix[ii] = uint8(isize)
+			myImage.Pix[ii] = uint8(isize) & 0xFF
 			ii++
 		}
 		myImage.Pix[ii] = dat[i]

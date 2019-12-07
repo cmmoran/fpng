@@ -1,9 +1,9 @@
-.PHONY: default server client deps fmt clean all transmit release-all assets client-assets server-assets contributors
-export GOPATH:=/Users/cm250309/.go
+.PHONY: default fpng
+export GOPATH:=/Users/cmoran/.go
 
-BUILDTAGS=debug
-default: all
+default: fpng
 
 fpng:
-	go install -a -tags '$(BUILDTAGS)' fpng
+	go install -a fpng.go
+
 

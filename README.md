@@ -4,7 +4,7 @@ Let's say you want to share something. Let's also say that thing you want to sha
 
 ### fpng
 
-fpng [en|de]codes an aribtrary file to png format. This means the file created by encode will be a .png file. It won't be pretty. It will be a square. But when you decode it, it will be a perfect lossless match to the original input file.
+fpng \[en|de\]codes an aribtrary file to png format. This means the file created by encode will be a .png file. It won't be pretty. It will be a square. But when you decode it, it will be a perfect lossless match to the original input file.
 
 License:
 https://opensource.org/licenses/MIT
