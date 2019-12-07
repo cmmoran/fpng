@@ -2,17 +2,28 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
 	"regexp"
+	"syscall"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
 	helpflag = false
+	crypt    = false
+	bcrypt   = ""
 	infile   = ""
 )
 
@@ -36,10 +47,87 @@ func main() {
 
 func init() {
 	helpflag = len(os.Args) == 1 || os.Args[1] == "-h"
+	crypt = len(os.Args) == 3 && os.Args[1] == "-k"
+	if !helpflag && crypt {
+		readCrypt()
+	}
 	if !helpflag && len(os.Args) > 0 {
-		infile = os.Args[1]
+		argIndex := 1
+		if crypt {
+			argIndex = 2
+		}
+		infile = os.Args[argIndex]
 	}
 }
+
+func readCrypt() {
+	fmt.Print("Enter passphrase: ")
+	btext, err := terminal.ReadPassword(syscall.Stdin)
+	if err != nil {
+		panic(err.Error())
+	}
+	text := string(btext)
+	bcrypt = createHash(text)
+	fmt.Println()
+}
+
+func Usage() {
+	fmt.Printf("Hate the message: \033[2m\"At the request of your administrator, only images can be uploaded to this workspace.\"\033[0m?\n" +
+		"fpng is a codec for any arbitrary file to and from png format. Great for sharing arbitrary files where only images are allowed to be shared.\n\n" +
+		"" +
+		"\033[37mfpng\033[0m [\033[36m-k\033[0m] <\033[36minfile\033[0m>\n" +
+		"     [\033[36m-k\033[0m]: prompt for symmetric encryption key (if decoding and infile is encrypted, fpng will prompt for the key with or without this flag)\n" +
+		"     <\033[36minfile\033[0m>: png file -> decode to original\n" +
+		"     <\033[36minfile\033[0m>: data file -> encode to <infile>.png\n" +
+		"\033[1mNOTE\033[0m: [] = optional, <> = required\n")
+
+}
+
+/*
+Begin https://www.thepolyglotdeveloper.com/2018/02/encrypt-decrypt-data-golang-application-crypto-packages/
+*/
+func createHash(key string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(key))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func encrypt(data []byte, passphrase string) []byte {
+	block, _ := aes.NewCipher([]byte(createHash(passphrase)))
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		panic(err.Error())
+	}
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return ciphertext
+}
+
+func decrypt(data []byte, passphrase string) []byte {
+	key := []byte(createHash(passphrase))
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err.Error())
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err.Error())
+	}
+	nonceSize := gcm.NonceSize()
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+	return plaintext
+}
+
+/*
+End https://www.thepolyglotdeveloper.com/2018/02/encrypt-decrypt-data-golang-application-crypto-packages/
+*/
 
 func decode(fName string, oName string) {
 	data, _ := ioutil.ReadFile(fName)
@@ -65,11 +153,13 @@ func decode(fName string, oName string) {
 
 	nrgba := imageData.(*image.NRGBA)
 
-	filelength := (int32(nrgba.Pix[0]) << 24) | (int32(nrgba.Pix[1]) << 16) | (int32(nrgba.Pix[2]) << 8) | int32(nrgba.Pix[3])
+	dcrypt := nrgba.Pix[0] == uint8(1)
+
+	filelength := (int32(nrgba.Pix[1]) << 24) | (int32(nrgba.Pix[2]) << 16) | (int32(nrgba.Pix[3]) << 8) | int32(nrgba.Pix[4])
 
 	ndata := make([]byte, filelength)
 
-	ndata = nrgba.Pix[4 : filelength+4]
+	ndata = nrgba.Pix[5 : filelength+5]
 
 	outputFile, err := os.Create(oName)
 	if err != nil {
@@ -77,12 +167,21 @@ func decode(fName string, oName string) {
 		return
 	}
 
+	enc := ""
+	if !crypt && dcrypt {
+		readCrypt()
+		crypt = true
+	}
+
+	if crypt {
+		ndata = decrypt(ndata, bcrypt)
+		enc = "(Encrypted) "
+	}
 	_, _ = outputFile.Write(ndata)
-
 	_ = outputFile.Sync()
-
 	_ = outputFile.Close()
-	fmt.Printf("Decoded %s -> %s\n", fName, oName)
+
+	fmt.Printf("Decoded %s%s -> %s\n", enc, fName, oName)
 
 	err = os.Chtimes(oName, fTime, fTime)
 
@@ -92,12 +191,6 @@ func decode(fName string, oName string) {
 	}
 }
 
-func Usage() {
-	fmt.Printf("Can only send images through slack huh?\n\033[37mfpng\033[0m <\033[36minfile\033[0m>\n" +
-		"     <infile>: png file -> decode to original\n" +
-		"     <infile>: data file -> encode to <infile>.png\n")
-}
-
 func encode(fName string, oName string) {
 	dat, err := ioutil.ReadFile(fName)
 
@@ -105,6 +198,13 @@ func encode(fName string, oName string) {
 		fmt.Println("Input file cannot be empty")
 		Usage()
 		return
+	}
+	enc := ""
+	icrypt := uint8(0)
+	if crypt {
+		dat = encrypt(dat, bcrypt)
+		icrypt = uint8(1)
+		enc = "(Encrypted) "
 	}
 
 	size := len(dat)
@@ -117,24 +217,13 @@ func encode(fName string, oName string) {
 
 	imageSize := int(math.Ceil(math.Sqrt(float64(addl))))
 
-	myImage := image.NewNRGBA(image.Rect(0, 0, imageSize+1, imageSize+1))
+	img := image.NewNRGBA(image.Rect(0, 0, imageSize+1, imageSize+1))
 
 	ii := 0
+	encode8(&ii, img.Pix, icrypt)
+	encode32(&ii, img.Pix, isize)
+	img.Pix = append(img.Pix[:ii], append(dat, img.Pix[ii:]...)...)
 
-	for i := 0; i < size; i++ {
-		if i == 0 {
-			myImage.Pix[ii] = uint8(isize>>24) & 0xFF
-			ii++
-			myImage.Pix[ii] = uint8(isize>>16) & 0xFF
-			ii++
-			myImage.Pix[ii] = uint8(isize>>8) & 0xFF
-			ii++
-			myImage.Pix[ii] = uint8(isize) & 0xFF
-			ii++
-		}
-		myImage.Pix[ii] = dat[i]
-		ii++
-	}
 	outputFile, err := os.Create(oName)
 
 	if err != nil {
@@ -142,8 +231,25 @@ func encode(fName string, oName string) {
 		return
 	}
 
-	_ = png.Encode(outputFile, myImage)
+	_ = png.Encode(outputFile, img)
 
 	_ = outputFile.Close()
-	fmt.Printf("Decoded %s -> %s\n", fName, oName)
+
+	fmt.Printf("Encoded %s%s -> %s\n", enc, fName, oName)
+}
+
+func encode8(index *int, data []uint8, value uint8) {
+	data[*index] = value
+	*index = *index + 1
+}
+
+func encode32(index *int, data []uint8, value int32) {
+	data[*index] = uint8(value>>24) & 0xFF
+	*index = *index + 1
+	data[*index] = uint8(value>>16) & 0xFF
+	*index = *index + 1
+	data[*index] = uint8(value>>8) & 0xFF
+	*index = *index + 1
+	data[*index] = uint8(value) & 0xFF
+	*index = *index + 1
 }
