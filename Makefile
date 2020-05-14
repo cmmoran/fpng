@@ -1,5 +1,5 @@
 .PHONY: default fpng
-export GOPATH:=/Users/cmoran/.go
+export GOPATH:=${HOME}/go
 
 default: fpng
 
