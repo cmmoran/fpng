@@ -1,9 +1,9 @@
 .PHONY: default fpng
 export GOPATH:=${HOME}/go
 
-default: fpng
+default: build/bin/fpng
 
-fpng:
-	go install -a fpng.go
+build/bin/fpng:
+	go build -o build/bin/fpng main.go
 
 
