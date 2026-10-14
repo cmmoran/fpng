@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"golang.org/x/crypto/ssh/terminal"
 	"image"
 	"image/png"
 	"io"
@@ -16,6 +15,8 @@ import (
 	"math"
 	"os"
 	"regexp"
+
+	"golang.org/x/term"
 )
 
 var (
@@ -59,7 +60,7 @@ func init() {
 
 func readCrypt() {
 	fmt.Print("Enter passphrase: ")
-	btext, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	btext, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		panic(err.Error())
 	}
